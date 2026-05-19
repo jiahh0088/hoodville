@@ -12,6 +12,7 @@ import { presetRepo } from './db/database';
 import * as presetCmd from './commands/preset';
 import * as inviteCmd from './commands/invite';
 import * as statusCmd from './commands/status';
+import * as dryrunCmd from './commands/dryrun';
 
 interface Command {
   data: { name: string; toJSON: () => unknown };
@@ -22,6 +23,7 @@ const commands = new Collection<string, Command>();
 commands.set(presetCmd.data.name, presetCmd);
 commands.set(inviteCmd.data.name, inviteCmd);
 commands.set(statusCmd.data.name, statusCmd);
+commands.set(dryrunCmd.data.name, dryrunCmd);
 
 export function setupBot(client: Client): void {
   client.once(Events.ClientReady, (c) => {
@@ -68,7 +70,8 @@ async function handleAutocomplete(interaction: AutocompleteInteraction): Promise
 
   if (
     (commandName === 'preset' && ['name'].includes(focused.name) && interaction.options.getSubcommand() !== 'create') ||
-    (commandName === 'invite' && focused.name === 'preset')
+    (commandName === 'invite' && focused.name === 'preset') ||
+    (commandName === 'dryrun' && focused.name === 'preset')
   ) {
     const presets = presetRepo.list();
     const query = focused.value.toString().toLowerCase();
