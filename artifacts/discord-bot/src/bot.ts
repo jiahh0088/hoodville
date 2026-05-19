@@ -5,6 +5,8 @@ import {
   Interaction,
   AutocompleteInteraction,
   ChatInputCommandInteraction,
+  REST,
+  Routes,
 } from 'discord.js';
 import { log } from './logger';
 import { presetRepo } from './db/database';
@@ -25,10 +27,61 @@ commands.set(inviteCmd.data.name, inviteCmd);
 commands.set(statusCmd.data.name, statusCmd);
 commands.set(dryrunCmd.data.name, dryrunCmd);
 
+async function registerCommands(client: Client): Promise<void> {
+  const token = process.env.DISCORD_TOKEN;
+  const clientId = process.env.CLIENT_ID ?? client.user?.id;
+
+  if (!token || !clientId) {
+    log.warn('Skipping command registration — DISCORD_TOKEN or CLIENT_ID not set.');
+    return;
+  }
+
+  const rest = new REST().setToken(token);
+  const body = commands.map((c) => c.data.toJSON());
+
+  const guildIds = process.env.COMMAND_GUILD_ID
+    ? [process.env.COMMAND_GUILD_ID]
+    : Array.from(client.guilds.cache.keys());
+
+  if (guildIds.length === 0) {
+    log.warn('Bot is not in any guilds — skipping command registration.');
+    return;
+  }
+
+  let registered = 0;
+  for (const guildId of guildIds) {
+    try {
+      await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body });
+      registered++;
+      log.info(`Commands registered in guild: ${guildId}`);
+    } catch (err: unknown) {
+      log.warn(`Failed to register commands in guild ${guildId}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  log.info(`Auto-registered ${body.length} slash command(s) across ${registered} guild(s).`);
+}
+
 export function setupBot(client: Client): void {
-  client.once(Events.ClientReady, (c) => {
+  client.once(Events.ClientReady, async (c) => {
     log.info(`Bot ready — logged in as ${c.user.tag}`);
     log.info(`Serving ${c.guilds.cache.size} guild(s)`);
+    await registerCommands(c);
+  });
+
+  client.on(Events.GuildCreate, async (guild) => {
+    log.info(`Joined new guild: ${guild.name} (${guild.id}) — registering commands...`);
+    const token = process.env.DISCORD_TOKEN;
+    const clientId = process.env.CLIENT_ID ?? client.user?.id;
+    if (!token || !clientId) return;
+    const rest = new REST().setToken(token);
+    const body = commands.map((c) => c.data.toJSON());
+    try {
+      await rest.put(Routes.applicationGuildCommands(clientId, guild.id), { body });
+      log.info(`Commands registered in new guild: ${guild.id}`);
+    } catch (err: unknown) {
+      log.warn(`Failed to register in new guild ${guild.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   });
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
